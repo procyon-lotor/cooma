@@ -26,6 +26,7 @@ import java.io.StringWriter;
  * @since 0.1.0
  */
 public final class StringUtils {
+
     /**
      * Get the String of Throwable, like the output of {@link Throwable#printStackTrace()}.
      *
@@ -38,7 +39,7 @@ public final class StringUtils {
     /**
      * Get the String of Throwable, like the output of {@link Throwable#printStackTrace()}.
      *
-     * @param head      the head line of message.
+     * @param head the head line of message.
      * @param throwable the input throwable.
      */
     public static String toString(String head, Throwable throwable) {
