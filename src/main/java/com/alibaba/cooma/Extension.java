@@ -33,7 +33,7 @@ import java.lang.annotation.Target;
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE})
+@Target({ElementType.TYPE}) // 仅 type
 public @interface Extension {
 
     /**

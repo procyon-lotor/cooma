@@ -119,6 +119,7 @@ public class ExtensionLoader<T> {
     public T getExtension(Map<String, String> properties) {
         String name = properties.get(type.getName()); // FIXME 使用类名作为Key，这里Hard Code了逻辑！
         if (StringUtils.isEmpty(name)) {
+            // 如果没有在配置文件中配置的话，则尝试获取注解上的默认配置
             name = defaultExtension;
         }
         return this.getExtension(name, properties, new ArrayList<String>());
@@ -141,7 +142,7 @@ public class ExtensionLoader<T> {
     }
 
     /**
-     * 返回缺省的扩展。
+     * 返回注解中配置的缺省的扩展。
      *
      * @throws IllegalStateException 指定的扩展没有设置缺省扩展点
      * @since 0.1.0
@@ -150,7 +151,7 @@ public class ExtensionLoader<T> {
         if (null == defaultExtension || defaultExtension.length() == 0) {
             throw new IllegalStateException("No default extension on extension " + type.getName());
         }
-        return getExtension(defaultExtension);
+        return this.getExtension(defaultExtension);
     }
 
     /**
@@ -164,7 +165,7 @@ public class ExtensionLoader<T> {
         if (null == defaultExtension || defaultExtension.length() == 0) {
             throw new IllegalStateException("No default extension on extension " + type.getName());
         }
-        return getExtension(defaultExtension, wrappers);
+        return this.getExtension(defaultExtension, wrappers);
     }
 
     /**
@@ -179,7 +180,7 @@ public class ExtensionLoader<T> {
         if (name == null || name.length() == 0) {
             throw new IllegalArgumentException("Extension name == null");
         }
-        return getExtensionClasses().get(name) != null;
+        return this.getExtensionClasses().get(name) != null;
     }
 
     /**
@@ -199,7 +200,7 @@ public class ExtensionLoader<T> {
      * @since 0.1.0
      */
     public Set<String> getSupportedExtensions() {
-        Map<String, Class<?>> classes = getExtensionClasses();
+        Map<String, Class<?>> classes = this.getExtensionClasses();
         return Collections.unmodifiableSet(new HashSet<String>(classes.keySet()));
     }
 
@@ -214,8 +215,7 @@ public class ExtensionLoader<T> {
 
     public Map<String, Map<String, String>> getExtensionAttribute() {
         // 先一下加载扩展点类
-        getExtensionClasses();
-
+        this.getExtensionClasses();
         return name2Attributes;
     }
 
@@ -241,6 +241,8 @@ public class ExtensionLoader<T> {
     // ==============================
 
     private final Class<T> type;
+
+    // 记录在注解上的默认配置
     private final String defaultExtension;
 
     private ExtensionLoader(Class<T> type) {
@@ -253,15 +255,14 @@ public class ExtensionLoader<T> {
             if (value != null && (value = value.trim()).length() > 0) {
                 String[] names = NAME_SEPARATOR.split(value);
                 if (names.length > 1) {
-                    throw new IllegalStateException("more than 1 default extension name on extension " +
-                            type.getName() + ": " + Arrays.toString(names));
+                    // 只能默认指定一个
+                    throw new IllegalStateException("more than 1 default extension name on extension " + type.getName() + ": " + Arrays.toString(names));
                 }
                 if (names.length == 1 && names[0].trim().length() > 0) {
                     defaultExt = names[0].trim();
                 }
                 if (!isValidExtName(defaultExt)) {
-                    throw new IllegalStateException("default name(" + defaultExt +
-                            ") of extension " + type.getName() + " is invalid!");
+                    throw new IllegalStateException("default name(" + defaultExt + ") of extension " + type.getName() + " is invalid!");
                 }
             }
         }
@@ -283,9 +284,10 @@ public class ExtensionLoader<T> {
 
     private T createWrapper(T instance, Map<String, String> properties, List<String> wrappers) {
         if (wrappers != null) {
+            // 遍历调用 wrapper 对实例逐层包装
             for (String name : wrappers) {
                 try {
-                    instance = inject(name2Wrapper.get(name).getConstructor(type).newInstance(instance), properties);
+                    instance = this.inject(name2Wrapper.get(name).getConstructor(type).newInstance(instance), properties);
                 } catch (Throwable e) {
                     throw new IllegalStateException("Fail to create wrapper(" + name + ") for extension point " + type);
                 }
@@ -295,20 +297,32 @@ public class ExtensionLoader<T> {
         return instance;
     }
 
+    /**
+     * 遍历调用实例的 setter 方法（入参必须是被 @Extension 注解的接口类型）
+     *
+     * @param instance
+     * @param properties
+     * @return
+     */
     private T inject(T instance, Map<String, String> properties) {
         for (Method method : instance.getClass().getMethods()) {
             if (method.getName().startsWith("set")
                     && method.getParameterTypes().length == 1
                     && Modifier.isPublic(method.getModifiers())) {
+
+                // 获取参数类型
                 Class<?> pt = method.getParameterTypes()[0];
+                // 参数是接口类型，且被 @Extension 注解
                 if (pt.isInterface() && withExtensionAnnotation(pt)) {
+                    // 防止循环引用
                     if (pt.equals(type)) { // avoid obvious dead loop TODO avoid complex nested loop setting?
-                        logger.warn("Ignore self set(" + method + ") for class(" +
-                                instance.getClass() + ") when inject.");
+                        logger.warn("Ignore self set(" + method + ") for class(" + instance.getClass() + ") when inject.");
                         continue;
                     }
                     try {
+                        // 获取参数类型对应的实现
                         Object prototype = getExtensionLoader(pt).getExtension(properties);
+                        // 调用 setter
                         method.invoke(instance, prototype);
                         // FIXME 要注入属性到Extension和Wrapper！
                     } catch (Throwable t) {
